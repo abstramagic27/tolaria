@@ -1,55 +1,55 @@
 {
   "editor": {
-    "fontFamily": "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-    "fontSize": 15,
-    "lineHeight": 1.5,
-    "maxWidth": 720,
-    "paddingHorizontal": 40,
-    "paddingVertical": 20,
-    "paragraphSpacing": 8
+    "fontFamily": "\"pplxSans\", -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+    "fontSize": 15.5,
+    "lineHeight": 1.68,
+    "maxWidth": 960,
+    "paddingHorizontal": 32,
+    "paddingVertical": 24,
+    "paragraphSpacing": 10
   },
   "headings": {
     "h1": {
-      "fontSize": 32,
+      "fontSize": 25,
       "fontWeight": 700,
-      "lineHeight": 1.2,
+      "lineHeight": 1.25,
       "marginTop": 32,
       "marginBottom": 12,
-      "color": "var(--text-heading)",
-      "letterSpacing": -0.5
+      "color": "var(--accent-blue)",
+      "letterSpacing": "-0.02em"
     },
     "h2": {
-      "fontSize": 27,
-      "fontWeight": 600,
-      "lineHeight": 1.4,
+      "fontSize": 19.5,
+      "fontWeight": 700,
+      "lineHeight": 1.3,
       "marginTop": 28,
       "marginBottom": 10,
-      "color": "var(--text-heading)",
-      "letterSpacing": -0.5
+      "color": "var(--accent-blue)",
+      "letterSpacing": "-0.02em"
     },
     "h3": {
-      "fontSize": 20,
-      "fontWeight": 600,
-      "lineHeight": 1.4,
+      "fontSize": 17,
+      "fontWeight": 700,
+      "lineHeight": 1.35,
       "marginTop": 24,
       "marginBottom": 8,
-      "color": "var(--text-heading)",
-      "letterSpacing": -0.5
+      "color": "var(--accent-blue)",
+      "letterSpacing": "-0.02em"
     },
     "h4": {
-      "fontSize": 20,
-      "fontWeight": 600,
+      "fontSize": 15.5,
+      "fontWeight": 700,
       "lineHeight": 1.4,
       "marginTop": 20,
       "marginBottom": 6,
-      "color": "var(--text-heading)",
+      "color": "var(--accent-blue)",
       "letterSpacing": 0
     }
   },
   "lists": {
     "bulletSymbol": "•",
     "bulletSize": 24,
-    "bulletColor": "var(--accent-blue)",
+    "bulletColor": "#8dbdff",
     "indentSize": 24,
     "itemSpacing": 4,
     "paddingLeft": 8,
@@ -77,13 +77,13 @@
       "textDecoration": "line-through"
     },
     "code": {
-      "fontFamily": "'SF Mono', 'Fira Code', monospace",
+      "fontFamily": "\"pplxSansMono\", \"SF Mono\", \"Fira Code\", Menlo, Consolas, monospace",
       "fontSize": 14,
-      "backgroundColor": "var(--bg-hover-subtle)",
-      "paddingHorizontal": 4,
+      "backgroundColor": "#242322",
+      "paddingHorizontal": 5,
       "paddingVertical": 2,
-      "borderRadius": 3,
-      "color": "var(--text-secondary)"
+      "borderRadius": 4,
+      "color": "#8dbdff"
     },
     "link": {
       "color": "var(--accent-blue)",

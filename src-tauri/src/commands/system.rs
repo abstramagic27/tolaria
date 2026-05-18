@@ -507,10 +507,10 @@ pub fn save_settings(settings: Settings) -> Result<(), String> {
 #[cfg(desktop)]
 #[tauri::command]
 pub async fn check_for_app_update(
-    app_handle: tauri::AppHandle,
-    release_channel: Option<String>,
+    _app_handle: tauri::AppHandle,
+    _release_channel: Option<String>,
 ) -> Result<Option<crate::app_updater::AppUpdateMetadata>, String> {
-    crate::app_updater::check_for_app_update(app_handle, release_channel).await
+    Ok(None)
 }
 
 #[cfg(mobile)]
@@ -525,18 +525,12 @@ pub async fn check_for_app_update(
 #[cfg(desktop)]
 #[tauri::command]
 pub async fn download_and_install_app_update(
-    app_handle: tauri::AppHandle,
-    release_channel: Option<String>,
-    expected_version: String,
-    on_event: Channel<crate::app_updater::AppUpdateDownloadEvent>,
+    _app_handle: tauri::AppHandle,
+    _release_channel: Option<String>,
+    _expected_version: String,
+    _on_event: Channel<crate::app_updater::AppUpdateDownloadEvent>,
 ) -> Result<(), String> {
-    crate::app_updater::download_and_install_app_update(
-        app_handle,
-        release_channel,
-        expected_version,
-        on_event,
-    )
-    .await
+    Err("Tolaria Adams uses a custom local build, so official Tolaria updates are disabled.".into())
 }
 
 #[cfg(mobile)]

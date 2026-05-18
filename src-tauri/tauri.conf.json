@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Tolaria",
+  "productName": "Tolaria Adams",
   "version": "0.1.0",
-  "identifier": "club.refactoring.tolaria",
+  "identifier": "club.refactoring.tolaria-adams",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5202",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Tolaria",
+        "title": "Tolaria Adams",
         "width": 1400,
         "height": 900,
         "minWidth": 480,
@@ -26,7 +26,7 @@
           "y": 24
         },
         "hiddenTitle": true,
-        "backgroundColor": "#F7F6F3",
+        "backgroundColor": "#171615",
         "dragDropEnabled": false
       }
     ],
@@ -53,7 +53,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"

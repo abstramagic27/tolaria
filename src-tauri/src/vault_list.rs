@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::commands::expand_tilde;
 
-const APP_CONFIG_DIR: &str = "com.tolaria.app";
+const APP_CONFIG_DIR: &str = "com.tolaria-adams.app";
 const LEGACY_APP_CONFIG_DIR: &str = "com.laputa.app";
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]

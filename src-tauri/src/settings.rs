@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use crate::ai_models::{normalize_ai_model_providers, AiModelProvider};
 
-const APP_CONFIG_DIR: &str = "com.tolaria.app";
+const APP_CONFIG_DIR: &str = "com.tolaria-adams.app";
 const LEGACY_APP_CONFIG_DIR: &str = "com.laputa.app";
 const SUPPORTED_DEFAULT_AI_AGENTS: &[&str] =
     &["claude_code", "codex", "opencode", "pi", "gemini", "kiro"];

@@ -13,10 +13,12 @@
   font-size: var(--editor-font-size);
   line-height: var(--editor-line-height);
   max-width: var(--editor-max-width);
-  margin: 0 auto;  /* Center the editor body */
+  margin: 0 auto 0 0;
   padding: var(--editor-padding-vertical) var(--editor-padding-horizontal);
   color: var(--colors-text);
   caret-color: var(--colors-cursor);
+  font-variation-settings: "DRKM" 1, "slnt" 0;
+  letter-spacing: -0.01em;
 }
 
 .editor-content-width--wide .editor__blocknote-container .bn-editor {
@@ -74,6 +76,24 @@
   background: var(--colors-selection);
 }
 
+.editor__blocknote-container strong,
+.editor__blocknote-container b {
+  color: var(--text-primary);
+  font-weight: 700 !important;
+  font-variation-settings: "DRKM" 1, "slnt" 0;
+}
+
+.editor__blocknote-container em,
+.editor__blocknote-container i:not([class*="icon"]) {
+  font-style: normal !important;
+  font-variation-settings: "DRKM" 1, "slnt" 90 !important;
+}
+
+.editor__blocknote-container .bn-inline-content > strong:first-child,
+.editor__blocknote-container .bn-inline-content > b:first-child {
+  color: #8dbdff;
+}
+
 /* Keep BlockNote toolbar/menu icons at a stable size.
    Some default React Icons-based controls inherit `1em` sizing and can blow up
    when upstream toolbar styling changes. */
@@ -98,8 +118,8 @@
 .editor__blocknote-container .bn-block-outer:has(h1) {
   margin-top: var(--headings-h1-margin-top) !important;
   margin-bottom: var(--headings-h1-margin-bottom) !important;
-  padding-bottom: 16px !important;
-  border-bottom: 1px solid var(--border-primary);
+  padding-bottom: 0.3em !important;
+  border-bottom: 1px solid var(--state-hover);
 }
 .editor__blocknote-container [data-content-type="heading"]:not([data-level]) .bn-inline-content,
 .editor__blocknote-container [data-content-type="heading"][data-level="1"] .bn-inline-content {
@@ -119,6 +139,8 @@
 .editor__blocknote-container .bn-block-outer:has(> .bn-block > [data-content-type="heading"][data-level="2"]) {
   margin-top: var(--headings-h2-margin-top) !important;
   margin-bottom: var(--headings-h2-margin-bottom) !important;
+  padding-bottom: 0.25em !important;
+  border-bottom: 1px solid var(--state-hover);
 }
 .editor__blocknote-container [data-content-type="heading"][data-level="2"] .bn-inline-content {
   font-size: var(--headings-h2-font-size);
