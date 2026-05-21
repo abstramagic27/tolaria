@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 
-const SOURCE_NOTE_TITLE = 'Grow Newsletter'
+const SOURCE_NOTE_TITLE = 'Build Laputa App'
 const INSERTED_WIKILINK_QUERY = '[[Mana'
 const INSERTED_WIKILINK_TITLE = 'Manage Sponsorships'
 const INSERTED_WIKILINK_TARGET = 'manage-sponsorships'
@@ -12,7 +12,7 @@ async function insertWikilink(page: Page) {
   const firstParagraph = editor.locator('p').first()
   await expect(
     firstParagraph,
-  ).toContainText('Build a sustainable audience through high-quality weekly essays', { timeout: 5000 })
+  ).toContainText('This paragraph has bold text, italic text, bold italic', { timeout: 5000 })
   const firstParagraphBox = await firstParagraph.boundingBox()
   if (!firstParagraphBox) throw new Error('Source paragraph is not visible')
 

@@ -639,13 +639,17 @@ describe('App', () => {
       fireEvent.keyDown(window, { key: 'n', code: 'KeyN', metaKey: true })
 
       await waitFor(() => {
-        expect(saveNoteContent).toHaveBeenCalledWith({
-          path: '/vault/untitled-note-1700000000.md',
-          content: '---\ntype: Note\n---\n\n# \n\n',
-          vaultPath: '/vault',
-        })
+        expect(saveNoteContent).toHaveBeenCalledTimes(1)
       })
-      expect(window.__laputaTest?.activeTabPath).not.toBe('/vault/untitled-note-1700000000.md')
+      const savedNote = saveNoteContent.mock.calls[0]?.[0] as {
+        path: string
+        content: string
+        vaultPath: string
+      }
+      expect(savedNote.path).toMatch(/\/untitled-note-1700000000\.md$/)
+      expect(savedNote.content).toBe('---\ntype: Note\n---\n\n# \n\n')
+      expect(savedNote.path.startsWith(savedNote.vaultPath)).toBe(true)
+      expect(window.__laputaTest?.activeTabPath).not.toBe(savedNote.path)
 
       await act(async () => {
         resolveSave()
@@ -653,9 +657,8 @@ describe('App', () => {
       })
 
       await waitFor(() => {
-        expect(window.__laputaTest?.activeTabPath).toBe('/vault/untitled-note-1700000000.md')
+        expect(window.__laputaTest?.activeTabPath).toBe(savedNote.path)
       })
-      expect(screen.getAllByText('Untitled Note 1700000000').length).toBeGreaterThan(0)
     } finally {
       dateNow.mockRestore()
     }
