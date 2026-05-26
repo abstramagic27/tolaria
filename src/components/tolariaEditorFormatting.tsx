@@ -59,10 +59,17 @@ import {
 } from './tolariaEditorFormattingConfig'
 import { useBlockNoteFormattingToolbarHoverGuard } from './blockNoteFormattingToolbarHoverGuard'
 import { openEditorAttachmentOrUrl } from './editorAttachmentActions'
+import {
+  isStaleBlockReferenceError,
+  reportRecoveredEditorTransformError,
+} from './richEditorTransformErrorRecoveryExtension'
 
 type TolariaBasicTextStyle = 'bold' | 'italic' | 'strike' | 'code'
 
 const FORMATTER_CLOSE_GRACE_MS = 160
+const FORMATTER_VIEWPORT_PADDING_PX = 8
+type TolariaFloatingOptions = NonNullable<FloatingUIOptions['useFloatingOptions']>
+type TolariaFloatingMiddleware = NonNullable<TolariaFloatingOptions['middleware']>[number]
 
 function isFocusStillWithinToolbar(
   currentTarget: EventTarget & Element,
@@ -226,6 +233,42 @@ function textAlignmentToPlacement(
   }
 }
 
+function viewportClampMiddleware(): TolariaFloatingMiddleware {
+  return {
+    name: 'tolariaViewportClamp',
+    fn({ x, rects }: { rects: { floating: { width: number } }; x: number }) {
+      const viewportWidth = window.visualViewport?.width ?? window.innerWidth
+      const minX = FORMATTER_VIEWPORT_PADDING_PX
+      const maxX = Math.max(
+        minX,
+        viewportWidth - rects.floating.width - FORMATTER_VIEWPORT_PADDING_PX,
+      )
+
+      return {
+        x: Math.min(Math.max(x, minX), maxX),
+      }
+    },
+  }
+}
+
+function withViewportSafeMiddleware(
+  options?: TolariaFloatingOptions,
+): TolariaFloatingOptions {
+  if (!options) {
+    return {
+      middleware: [viewportClampMiddleware()],
+    }
+  }
+
+  return {
+    ...options,
+    middleware: [
+      ...(options.middleware ?? []),
+      viewportClampMiddleware(),
+    ],
+  }
+}
+
 function editorSupportsTextStyle(
   style: TolariaBasicTextStyle,
   editor: BlockNoteEditor<BlockSchema, InlineContentSchema, StyleSchema>,
@@ -359,6 +402,40 @@ function getSelectedFileBlockState(
     : null
 }
 
+function reportStaleFormattingToolbarBlockReference(error: unknown) {
+  reportRecoveredEditorTransformError('stale_block_reference', error)
+}
+
+function liveSelectedBlock(
+  editor: BlockNoteEditor<BlockSchema, InlineContentSchema, StyleSchema>,
+  block: TolariaSelectedBlock,
+) {
+  try {
+    return editor.getBlock(block.id) as TolariaSelectedBlock | undefined
+  } catch (error) {
+    if (isStaleBlockReferenceError(error)) {
+      reportStaleFormattingToolbarBlockReference(error)
+      return undefined
+    }
+    throw error
+  }
+}
+
+function liveSelectedBlocks(
+  editor: BlockNoteEditor<BlockSchema, InlineContentSchema, StyleSchema>,
+  selectedBlocks: TolariaSelectedBlock[],
+) {
+  const liveBlocks: TolariaSelectedBlock[] = []
+
+  for (const block of selectedBlocks) {
+    const liveBlock = liveSelectedBlock(editor, block)
+    if (!liveBlock) return []
+    liveBlocks.push(liveBlock)
+  }
+
+  return liveBlocks
+}
+
 function fileDownloadTooltip(dict: unknown, blockType: string): string {
   const tooltip = (dict as {
     formatting_toolbar?: {
@@ -383,15 +460,26 @@ function updateSelectedBlocksToType(
   selectedBlocks: TolariaSelectedBlock[],
   item: ReturnType<typeof getTolariaBlockTypeSelectItems>[number],
 ) {
-  editor.focus()
-  editor.transact(() => {
-    for (const block of selectedBlocks) {
-      editor.updateBlock(block, {
-        type: item.type as never,
-        props: item.props as never,
-      })
+  const blocks = liveSelectedBlocks(editor, selectedBlocks)
+  if (!blocks.length) return
+
+  try {
+    editor.focus()
+    editor.transact(() => {
+      for (const block of blocks) {
+        editor.updateBlock(block.id, {
+          type: item.type as never,
+          props: item.props as never,
+        })
+      }
+    })
+  } catch (error) {
+    if (isStaleBlockReferenceError(error)) {
+      reportStaleFormattingToolbarBlockReference(error)
+      return
     }
-  })
+    throw error
+  }
 }
 
 function TolariaBasicTextStyleButton({
@@ -681,7 +769,7 @@ export function TolariaFormattingToolbarController(props: {
           }
         },
         placement,
-        ...props.floatingUIOptions?.useFloatingOptions,
+        ...withViewportSafeMiddleware(props.floatingUIOptions?.useFloatingOptions),
       },
       elementProps: {
         style: {

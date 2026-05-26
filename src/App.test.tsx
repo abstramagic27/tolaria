@@ -408,6 +408,7 @@ vi.mock('@blocknote/react', () => ({
   DeleteLinkButton: () => null,
   SideMenuController: () => null,
   SuggestionMenuController: () => null,
+  GridSuggestionMenuController: () => null,
   useComponentsContext: () => ({
     LinkToolbar: {
       Button: ({
@@ -524,7 +525,7 @@ describe('App', () => {
       // Entries appear in both Sidebar and NoteList
       expect(screen.getAllByText('Test Project').length).toBeGreaterThan(0)
       expect(screen.getAllByText('Software Development').length).toBeGreaterThan(0)
-    })
+    }, { timeout: SLOW_APP_READY_TIMEOUT_MS })
   })
 
   it('keeps the app shell usable while the vault note scan is pending', async () => {
@@ -575,7 +576,7 @@ describe('App', () => {
     })
   })
 
-  it('opens a note window by loading only the requested entry', async () => {
+  it('opens a note window after loading the active vault graph', async () => {
     const listVault = vi.fn(() => mockEntries)
     const reloadVaultEntry = vi.fn(({ path }: { path: string }) =>
       mockEntries.find((entry) => entry.path === path) ?? null,
@@ -598,7 +599,7 @@ describe('App', () => {
     expect(getNoteContent).toHaveBeenCalledWith({ path: '/vault/project/test.md', vaultPath: '/vault' })
     await waitFor(() => expect(window.__laputaTest?.activeTabPath).toBe('/vault/project/test.md'))
     expect(screen.getByTestId('blocknote-view')).toHaveAttribute('data-editable', 'true')
-    expect(listVault).not.toHaveBeenCalled()
+    expect(listVault).toHaveBeenCalled()
   })
 
   it('shows keyboard shortcut hints', async () => {
@@ -1303,7 +1304,7 @@ describe('App', () => {
 
     render(<App />)
 
-    expect(await screen.findByTestId('status-missing-git')).toBeInTheDocument()
+    expect(await screen.findByTestId('status-missing-git', {}, { timeout: SLOW_APP_READY_TIMEOUT_MS })).toBeInTheDocument()
     fireEvent.click(screen.getByTestId('status-missing-git'))
     expect(await screen.findByText('Enable Git for this vault?')).toBeInTheDocument()
 

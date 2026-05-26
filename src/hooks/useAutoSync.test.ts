@@ -26,6 +26,10 @@ function conflict(files: string[]): GitPullResult {
   return { status: 'conflict', message: `Merge conflict in ${files.length} file(s)`, updatedFiles: [], conflictFiles: files }
 }
 
+function commandCalls(command: string) {
+  return mockInvokeFn.mock.calls.filter((call: unknown[]) => call[0] === command)
+}
+
 describe('useAutoSync', () => {
   const onVaultUpdated = vi.fn()
   const onConflict = vi.fn()
@@ -36,15 +40,17 @@ describe('useAutoSync', () => {
     mockInvokeFn.mockImplementation((cmd: string) => {
       if (cmd === 'get_last_commit_info') return Promise.resolve(MOCK_COMMIT_INFO)
       if (cmd === 'get_conflict_files') return Promise.resolve([])
+      if (cmd === 'git_remote_status') return Promise.resolve({ branch: 'main', ahead: 0, behind: 0, hasRemote: true })
       return Promise.resolve(upToDate())
     })
   })
 
-  function renderSync(intervalMinutes: number | null = 5, enabled = true) {
+  function renderSync(intervalMinutes: number | null = 5, enabled = true, vaultPaths?: string[]) {
     return renderHook(() =>
       useAutoSync({
         enabled,
         vaultPath: '/Users/luca/Laputa',
+        vaultPaths,
         intervalMinutes,
         onVaultUpdated,
         onConflict,
@@ -58,6 +64,49 @@ describe('useAutoSync', () => {
     await waitFor(() => {
       expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Laputa' })
     })
+  })
+
+  it('pulls all active vaults on mount', async () => {
+    renderSync(5, true, ['/Users/luca/Laputa', '/Users/luca/Work'])
+
+    await waitFor(() => {
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Laputa' })
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Work' })
+    })
+  })
+
+  it('dedupes automatic mount, focus, and interval remote-status refreshes within cooldown', async () => {
+    const now = vi.spyOn(Date, 'now')
+    let clock = 1_000_000
+    now.mockImplementation(() => clock)
+
+    try {
+      renderSync(0.001, true, ['/Users/luca/Laputa', '/Users/luca/Work'])
+
+      await waitFor(() => {
+        expect(commandCalls('git_pull')).toHaveLength(2)
+        expect(commandCalls('git_remote_status')).toHaveLength(2)
+      })
+
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+      expect(commandCalls('git_remote_status')).toHaveLength(2)
+
+      mockInvokeFn.mockClear()
+      clock += 5_000
+
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'))
+        await new Promise(resolve => setTimeout(resolve, 100))
+      })
+
+      expect(commandCalls('git_pull')).toHaveLength(0)
+      expect(commandCalls('git_remote_status')).toHaveLength(0)
+    } finally {
+      now.mockRestore()
+    }
   })
 
   it('does not call git operations when disabled', async () => {
@@ -96,7 +145,7 @@ describe('useAutoSync', () => {
     const { result } = renderSync()
 
     await waitFor(() => {
-      expect(onVaultUpdated).toHaveBeenCalledWith(['note.md', 'project/plan.md'])
+      expect(onVaultUpdated).toHaveBeenCalledWith(['note.md', 'project/plan.md'], '/Users/luca/Laputa')
       expect(onToast).toHaveBeenCalledWith('Pulled 2 update(s) from remote')
       expect(result.current.syncStatus).toBe('idle')
     })
@@ -124,7 +173,7 @@ describe('useAutoSync', () => {
     )
 
     await waitFor(() => {
-      expect(asyncVaultRefresh).toHaveBeenCalledWith(['note.md'])
+      expect(asyncVaultRefresh).toHaveBeenCalledWith(['note.md'], '/Users/luca/Laputa')
     })
     expect(onToast).not.toHaveBeenCalledWith('Pulled 1 update(s) from remote')
 
@@ -417,7 +466,7 @@ describe('useAutoSync', () => {
     })
 
     await waitFor(() => {
-      expect(onVaultUpdated).toHaveBeenCalledWith(['note.md'])
+      expect(onVaultUpdated).toHaveBeenCalledWith(['note.md'], '/Users/luca/Laputa')
       expect(onSyncUpdated).toHaveBeenCalled()
       expect(onToast).toHaveBeenCalledWith('Pulled and pushed successfully')
       expect(result.current.syncStatus).toBe('idle')
@@ -456,6 +505,119 @@ describe('useAutoSync', () => {
     await waitFor(() => {
       expect(result.current.syncStatus).toBe('pull_required')
       expect(onToast).toHaveBeenCalledWith('Push still rejected after pull — try again')
+    })
+  })
+
+  it('manual triggerSync targets an explicit repository path', async () => {
+    const { result } = renderSync()
+    await waitFor(() => {
+      expect(result.current.syncStatus).toBe('idle')
+    })
+
+    mockInvokeFn.mockClear()
+    mockInvokeFn.mockImplementation((cmd: string) => {
+      if (cmd === 'get_last_commit_info') return Promise.resolve(MOCK_COMMIT_INFO)
+      if (cmd === 'git_remote_status') return Promise.resolve({ branch: 'main', ahead: 0, behind: 0, hasRemote: true })
+      return Promise.resolve(updated(['work.md']))
+    })
+
+    await act(async () => {
+      result.current.triggerSync('/Users/luca/Work')
+    })
+
+    await waitFor(() => {
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Work' })
+      expect(onVaultUpdated).toHaveBeenCalledWith(['work.md'], '/Users/luca/Work')
+    })
+  })
+
+  it('manual triggerSync syncs every active vault by default', async () => {
+    const { result } = renderSync(5, true, ['/Users/luca/Laputa', '/Users/luca/Work'])
+    await waitFor(() => {
+      expect(result.current.syncStatus).toBe('idle')
+    })
+
+    mockInvokeFn.mockClear()
+    mockInvokeFn.mockImplementation((cmd: string, args: { vaultPath?: string } = {}) => {
+      if (cmd === 'get_last_commit_info') return Promise.resolve(MOCK_COMMIT_INFO)
+      if (cmd === 'git_remote_status') return Promise.resolve({ branch: 'main', ahead: 0, behind: 0, hasRemote: true })
+      if (cmd === 'git_pull') return Promise.resolve(updated([args.vaultPath?.endsWith('/Work') ? 'work.md' : 'home.md']))
+      return Promise.resolve(upToDate())
+    })
+
+    await act(async () => {
+      result.current.triggerSync()
+    })
+
+    await waitFor(() => {
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Laputa' })
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Work' })
+      expect(onVaultUpdated).toHaveBeenCalledWith(['home.md'], '/Users/luca/Laputa')
+      expect(onVaultUpdated).toHaveBeenCalledWith(['work.md'], '/Users/luca/Work')
+      expect(onToast).toHaveBeenCalledWith('Pulled 2 update(s) from remote')
+    })
+  })
+
+  it('pullAndPush pulls and pushes every active vault by default', async () => {
+    const { result } = renderSync(5, true, ['/Users/luca/Laputa', '/Users/luca/Work'])
+    await waitFor(() => {
+      expect(result.current.syncStatus).toBe('idle')
+    })
+
+    mockInvokeFn.mockClear()
+    mockInvokeFn.mockImplementation((cmd: string) => {
+      if (cmd === 'get_conflict_files') return Promise.resolve([])
+      if (cmd === 'get_last_commit_info') return Promise.resolve(MOCK_COMMIT_INFO)
+      if (cmd === 'git_remote_status') return Promise.resolve({ branch: 'main', ahead: 0, behind: 0, hasRemote: true })
+      if (cmd === 'git_pull') return Promise.resolve(upToDate())
+      if (cmd === 'git_push') return Promise.resolve({ status: 'ok', message: 'Pushed successfully' })
+      return Promise.resolve(upToDate())
+    })
+
+    await act(async () => {
+      result.current.pullAndPush()
+    })
+
+    await waitFor(() => {
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Laputa' })
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Work' })
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_push', { vaultPath: '/Users/luca/Laputa' })
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_push', { vaultPath: '/Users/luca/Work' })
+      expect(onToast).toHaveBeenCalledWith('Pulled and pushed successfully')
+    })
+  })
+
+  it('pullAndPush skips push for local-only vaults with no remote', async () => {
+    const { result } = renderSync()
+    await waitFor(() => {
+      expect(result.current.syncStatus).toBe('idle')
+    })
+
+    mockInvokeFn.mockClear()
+    mockInvokeFn.mockImplementation((cmd: string) => {
+      if (cmd === 'get_conflict_files') return Promise.resolve([])
+      if (cmd === 'get_last_commit_info') return Promise.resolve(MOCK_COMMIT_INFO)
+      if (cmd === 'git_remote_status') return Promise.resolve({ branch: 'main', ahead: 0, behind: 0, hasRemote: false })
+      if (cmd === 'git_pull') {
+        return Promise.resolve({
+          status: 'no_remote',
+          message: 'No remote configured',
+          updatedFiles: [],
+          conflictFiles: [],
+        })
+      }
+      if (cmd === 'git_push') return Promise.resolve({ status: 'ok', message: 'Pushed successfully' })
+      return Promise.resolve(upToDate())
+    })
+
+    await act(async () => {
+      result.current.pullAndPush()
+    })
+
+    await waitFor(() => {
+      expect(mockInvokeFn).toHaveBeenCalledWith('git_pull', { vaultPath: '/Users/luca/Laputa' })
+      expect(mockInvokeFn).not.toHaveBeenCalledWith('git_push', { vaultPath: '/Users/luca/Laputa' })
+      expect(result.current.syncStatus).toBe('idle')
     })
   })
 

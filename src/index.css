@@ -398,7 +398,7 @@
     overflow: hidden;
     font-variation-settings: "DRKM" 1, "slnt" 0;
   }
-  body.linux-chrome {
+  body.custom-window-chrome {
     padding-top: 32px;
   }
   html, body {

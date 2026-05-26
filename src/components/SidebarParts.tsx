@@ -1,13 +1,19 @@
-import { type ComponentType } from 'react'
-import type { SidebarSelection } from '../types'
+import { useEffect, useRef, type ComponentType, type MouseEvent as ReactMouseEvent } from 'react'
+import type { SidebarSelection, VaultEntry, WorkspaceIdentity } from '../types'
 import { cn } from '@/lib/utils'
 import { getTypeColor, getTypeLightColor } from '../utils/typeColors'
 import { type IconProps } from '@phosphor-icons/react'
 import { SIDEBAR_ITEM_PADDING } from './sidebar/sidebarStyles'
 import { useSidebarInlineRenameInput } from './sidebar/sidebarHooks'
 import { Button } from './ui/button'
+import { Checkbox } from './ui/checkbox'
 import { Input } from './ui/input'
 import { translate, type AppLocale } from '../lib/i18n'
+import { WorkspaceInitialsBadge } from './WorkspaceInitialsBadge'
+import {
+  collectTypeVisibilityWorkspaces,
+  findTypeDefinitionForWorkspace,
+} from '../utils/typeVisibility'
 
 const SIDEBAR_COUNT_PILL_STYLE = {
   borderRadius: 9999,
@@ -135,7 +141,7 @@ export function SidebarLoadingCountPill({ compact, testId = 'sidebar-count-skele
 }
 
 function NavItemLabel({ label, compact }: { label: string; compact?: boolean }) {
-  return <span className={cn("flex-1 font-medium", getNavItemTextClass(compact))}>{label}</span>
+  return <span className={cn("min-w-0 flex-1 truncate text-left font-medium", getNavItemTextClass(compact))}>{label}</span>
 }
 
 function NavItemCount({
@@ -218,8 +224,11 @@ function ClickableNavItem({
   padding: ReturnType<typeof getNavItemPadding>
 }) {
   return (
-    <div
-      className={cn("flex cursor-pointer select-none items-center gap-2 rounded transition-colors", isActive ? activeClassName : "text-foreground hover:bg-accent")}
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={cn("h-auto w-full cursor-pointer select-none justify-start rounded text-left transition-colors", isActive ? activeClassName : "text-foreground hover:bg-accent")}
       style={{ padding, borderRadius: 4 }}
       onClick={onClick}
     >
@@ -232,7 +241,7 @@ function ClickableNavItem({
         style={resolveBadgeStyle(isActive, activeBadgeClassName, activeBadgeStyle, badgeStyle)}
         compact={compact}
       />
-    </div>
+    </Button>
   )
 }
 
@@ -449,8 +458,9 @@ function SectionHeaderLabel({
   }
 
   return (
-    <span
-      className="min-w-0 truncate text-[13px] font-medium"
+    <button
+      type="button"
+      className="min-w-0 truncate border-0 bg-transparent p-0 text-left text-[13px] font-medium"
       style={{ marginLeft: 4, color: getSectionHeaderTitleColor(isActive, sectionColor) }}
       onDoubleClick={(event) => {
         event.stopPropagation()
@@ -458,7 +468,7 @@ function SectionHeaderLabel({
       }}
     >
       {label}
-    </span>
+    </button>
   )
 }
 
@@ -491,14 +501,35 @@ function SectionHeader({ label, type, Icon, sectionColor, sectionLightColor, ite
   onStartRename?: () => void; onSelectTypeNote?: () => void
   locale?: AppLocale
 }) {
+  const headerRef = useRef<HTMLDivElement>(null)
+  const selectHandler = getSectionSelectHandler(isRenaming, onSelect)
+  const contextMenuHandler = getSectionContextMenuHandler(isRenaming, onContextMenu)
+  const doubleClickHandler = !isRenaming ? onSelectTypeNote : undefined
+
+  useEffect(() => {
+    const header = headerRef.current
+    if (!header) return
+
+    const handleClick = () => selectHandler?.()
+    const handleContextMenu = (event: MouseEvent) => contextMenuHandler?.(event as unknown as ReactMouseEvent)
+    const handleDoubleClick = () => doubleClickHandler?.()
+
+    header.addEventListener('click', handleClick)
+    header.addEventListener('contextmenu', handleContextMenu)
+    header.addEventListener('dblclick', handleDoubleClick)
+    return () => {
+      header.removeEventListener('click', handleClick)
+      header.removeEventListener('contextmenu', handleContextMenu)
+      header.removeEventListener('dblclick', handleDoubleClick)
+    }
+  }, [contextMenuHandler, doubleClickHandler, selectHandler])
+
   return (
     <div
+      ref={headerRef}
       className={cn("group/section flex cursor-pointer select-none items-center justify-between rounded transition-colors", !isActive && "hover:bg-accent")}
       style={{ padding: SIDEBAR_ITEM_PADDING.withCount, borderRadius: 4, gap: 4, ...getSectionHeaderBackground(isActive, sectionLightColor) }}
       {...dragHandleProps}
-      onClick={getSectionSelectHandler(isRenaming, onSelect)}
-      onContextMenu={getSectionContextMenuHandler(isRenaming, onContextMenu)}
-      onDoubleClick={!isRenaming ? onSelectTypeNote : undefined}
     >
       <div className="flex min-w-0 flex-1 items-center" style={{ gap: 4 }}>
         <Icon size={16} weight={getSectionHeaderIconWeight(isActive)} style={{ color: sectionColor, flexShrink: 0 }} />
@@ -522,6 +553,8 @@ function SectionHeader({ label, type, Icon, sectionColor, sectionLightColor, ite
   )
 }
 
+type VisibilityToggleHandler = (type: string, typeEntryPath?: string) => void
+
 function VisibilityPopoverItem({
   group,
   isVisible,
@@ -530,7 +563,7 @@ function VisibilityPopoverItem({
 }: {
   group: SectionGroup
   isVisible: boolean
-  onToggle: (type: string) => void
+  onToggle: VisibilityToggleHandler
   locale?: AppLocale
 }) {
   const { label, type, Icon, customColor } = group
@@ -553,29 +586,156 @@ function VisibilityPopoverItem({
   )
 }
 
+function VisibilityMatrixHeader({ workspaces }: { workspaces: WorkspaceIdentity[] }) {
+  return (
+    <div
+      className="grid items-center gap-2 px-3 pb-1"
+      style={{ gridTemplateColumns: `minmax(96px, 1fr) repeat(${workspaces.length}, 28px)` }}
+    >
+      <div />
+      {workspaces.map((workspace) => (
+        <div key={workspace.path} className="flex justify-center">
+          <WorkspaceInitialsBadge workspace={workspace} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function VisibilityMatrixCell({
+  group,
+  typeEntry,
+  workspace,
+  onToggle,
+  locale,
+}: {
+  group: SectionGroup
+  typeEntry: VaultEntry | null
+  workspace: WorkspaceIdentity
+  onToggle: VisibilityToggleHandler
+  locale: AppLocale
+}) {
+  if (!typeEntry) {
+    return <span aria-hidden="true" className="mx-auto h-px w-3 bg-border" />
+  }
+
+  return (
+    <Checkbox
+      checked={typeEntry.visible !== false}
+      onCheckedChange={() => onToggle(group.type, typeEntry.path)}
+      aria-label={translate(locale, 'sidebar.section.toggle', { label: `${group.label} ${workspace.shortLabel}` })}
+      className="mx-auto"
+    />
+  )
+}
+
+function VisibilityMatrixRow({
+  entries,
+  group,
+  locale,
+  onToggle,
+  workspaces,
+}: {
+  entries: VaultEntry[]
+  group: SectionGroup
+  locale: AppLocale
+  onToggle: VisibilityToggleHandler
+  workspaces: WorkspaceIdentity[]
+}) {
+  const { label, type, Icon, customColor } = group
+  const { sectionColor } = resolveSectionColors(type, customColor)
+
+  return (
+    <div
+      className="grid items-center gap-2 px-3 py-1.5"
+      style={{ gridTemplateColumns: `minmax(96px, 1fr) repeat(${workspaces.length}, 28px)` }}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <Icon size={14} style={{ color: sectionColor }} />
+        <span className="min-w-0 truncate text-left text-[13px] text-foreground">{label}</span>
+      </div>
+      {workspaces.map((workspace) => (
+        <VisibilityMatrixCell
+          key={workspace.path}
+          group={group}
+          typeEntry={findTypeDefinitionForWorkspace(entries, type, workspace.path)}
+          workspace={workspace}
+          onToggle={onToggle}
+          locale={locale}
+        />
+      ))}
+    </div>
+  )
+}
+
+function VisibilityMatrixPopover({
+  entries,
+  locale,
+  onToggle,
+  sections,
+  workspaces,
+}: {
+  entries: VaultEntry[]
+  locale: AppLocale
+  onToggle: VisibilityToggleHandler
+  sections: SectionGroup[]
+  workspaces: WorkspaceIdentity[]
+}) {
+  return (
+    <>
+      <VisibilityMatrixHeader workspaces={workspaces} />
+      {sections.map((group) => (
+        <VisibilityMatrixRow
+          key={group.type}
+          entries={entries}
+          group={group}
+          locale={locale}
+          onToggle={onToggle}
+          workspaces={workspaces}
+        />
+      ))}
+    </>
+  )
+}
+
 // --- Visibility Popover ---
 
-export function VisibilityPopover({ sections, isSectionVisible, onToggle, locale = 'en' }: {
+export function VisibilityPopover({ entries, sections, isSectionVisible, onToggle, workspaceOrder = [], locale = 'en' }: {
+  entries: VaultEntry[]
   sections: SectionGroup[]
   isSectionVisible: (type: string) => boolean
-  onToggle: (type: string) => void
+  onToggle: VisibilityToggleHandler
+  workspaceOrder?: readonly string[]
   locale?: AppLocale
 }) {
+  const workspaces = collectTypeVisibilityWorkspaces(entries, workspaceOrder)
+  const showMatrix = workspaces.length > 1
+
   return (
     <div
       className="border border-border bg-popover text-popover-foreground"
       style={{ position: 'absolute', top: '100%', left: 6, right: 6, zIndex: 50, borderRadius: 8, padding: '8px 0', boxShadow: '0 4px 12px var(--shadow-dialog)' }}
     >
       <div className="text-[12px] font-semibold text-muted-foreground" style={{ padding: '0 12px 4px' }}>{translate(locale, 'sidebar.section.showInSidebar')}</div>
-      {sections.map((group) => (
-        <VisibilityPopoverItem
-          key={group.type}
-          group={group}
-          isVisible={isSectionVisible(group.type)}
-          onToggle={onToggle}
+      {showMatrix ? (
+        <VisibilityMatrixPopover
+          entries={entries}
           locale={locale}
+          onToggle={onToggle}
+          sections={sections}
+          workspaces={workspaces}
         />
-      ))}
+      ) : (
+        sections.map((group) => (
+          <VisibilityPopoverItem
+            key={group.type}
+            group={group}
+            isVisible={isSectionVisible(group.type)}
+            onToggle={onToggle}
+            locale={locale}
+          />
+        ))
+      )}
     </div>
   )
 }

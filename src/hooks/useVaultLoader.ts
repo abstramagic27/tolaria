@@ -408,6 +408,7 @@ function useInitialVaultLoad(options: InitialVaultLoadOptions) {
   )
 
   useEffect(() => {
+    void loadOptionsKey
     const path = vaultPath
     const loadOptions = loadOptionsRef.current
     const effectOptions = {
@@ -445,7 +446,7 @@ function useInitialVaultLoad(options: InitialVaultLoadOptions) {
     setEntries, setFolders, setIsLoading, setModifiedFiles, setModifiedFilesError, setViews,
     loadOptionsRef,
     loadOptionsKey,
-    folderVaults,
+    folderVaults
   ])
 }
 
@@ -860,6 +861,7 @@ function usePrunedWorkspaceLoadRefs(
   desiredWorkspacePaths: readonly string[],
 ) {
   useEffect(() => {
+    void desiredWorkspaceKey
     loadedWorkspacePathsRef.current = keepDesiredWorkspacePaths(
       loadedWorkspacePathsRef.current,
       desiredWorkspacePaths,
@@ -888,12 +890,14 @@ function useInitialLoadedWorkspaceMarker({
 }) {
   useEffect(() => {
     if (isLoading || !hasVaultPath({ vaultPath }) || initialLoadedVaultPathRef.current === vaultPath) return
+    const inferFallbackWorkspacePath = !vaults?.length
+    const loadedPaths = inferFallbackWorkspacePath && entries.length === 0
+      ? []
+      : loadedWorkspacePathsFromEntries(entries, vaultPath, { inferFallbackWorkspacePath })
     initialLoadedVaultPathRef.current = vaultPath
     loadedWorkspacePathsRef.current = new Set([
       ...loadedWorkspacePathsRef.current,
-      ...loadedWorkspacePathsFromEntries(entries, vaultPath, {
-        inferFallbackWorkspacePath: !vaults?.length,
-      }),
+      ...loadedPaths,
     ])
   }, [entries, initialLoadedVaultPathRef, isLoading, loadedWorkspacePathsRef, vaultPath, vaults])
 }
@@ -914,6 +918,7 @@ function useWorkspaceMetadataRetagEffect({
   vaults?: VaultOption[]
 }) {
   useEffect(() => {
+    void desiredWorkspaceKey
     if (!hasVaultPath({ vaultPath })) return
 
     setEntries((currentEntries) => retagEntriesForWorkspaceMetadata({
@@ -967,7 +972,10 @@ function loadMissingWorkspaceEntries({
   vaultPath: string
   vaults?: VaultOption[]
 }) {
-  void loadWorkspaceEntries(vault, defaultWorkspacePath, { reloadIfEmpty: true })
+  void loadWorkspaceEntries(vault, defaultWorkspacePath, {
+    forceReload: vault.path === vaultPath,
+    reloadIfEmpty: true,
+  })
     .then((loadedEntries) => {
       if (!isCurrentVaultPath(vaultPath)) return
       loadedPaths.add(vault.path)
@@ -1012,6 +1020,7 @@ function useMissingWorkspaceLoads({
   vaults?: VaultOption[]
 }) {
   useEffect(() => {
+    void desiredWorkspaceKey
     if (!hasVaultPath({ vaultPath }) || !vaults?.length || isLoading) return
 
     const loadedPaths = loadedWorkspacePathsRef.current
@@ -1042,7 +1051,7 @@ function useMissingWorkspaceLoads({
     loadingWorkspacePathsRef,
     setEntries,
     vaultPath,
-    vaults,
+    vaults
   ])
 }
 

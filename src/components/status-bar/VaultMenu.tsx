@@ -1,5 +1,5 @@
 import { Check, Cube, FolderOpen, GitBranch, Plus, Rocket, Warning as AlertTriangle, X } from '@phosphor-icons/react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   DndContext, PointerSensor, closestCenter, type DragEndEvent, useSensor, useSensors,
@@ -12,12 +12,14 @@ import { ActionTooltip } from '@/components/ui/action-tooltip'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ConfirmDeleteDialog } from '../ConfirmDeleteDialog'
+import { WorkspaceInitialsBadge } from '../WorkspaceInitialsBadge'
 import { translate, type AppLocale, type TranslationKey } from '../../lib/i18n'
 import { trackEvent } from '../../lib/telemetry'
 import type { VaultOption } from './types'
 import { useDismissibleLayer } from './useDismissibleLayer'
 import { workspaceAliasFromOption, workspaceIdentityFromVault } from '../../utils/workspaces'
 import { reorderVaultPath, vaultPathList } from '../../utils/vaultOrdering'
+import { applyMountedChange } from './vaultMenuMountedChange'
 
 interface VaultMenuProps {
   vaults: VaultOption[]
@@ -89,6 +91,7 @@ interface VaultMenuInteractionOptions {
   onSwitchVault: (path: string) => void
   onUpdateWorkspaceIdentity?: (path: string, patch: Partial<VaultOption>) => void
   setOpen: (open: boolean) => void
+  vaultPath: string
 }
 
 interface MountToggleRequest {
@@ -103,10 +106,6 @@ interface VaultPathSelection extends VaultMenuInteractionOptions {
   path: string
 }
 
-interface VaultMountChangeRequest extends VaultMenuInteractionOptions {
-  mounted: boolean
-  path: string
-}
 
 function getVaultTriggerClassName(open: boolean, compact: boolean) {
   if (compact) {
@@ -272,20 +271,14 @@ function DefaultVaultLabel({ isDefault, locale }: { isDefault: boolean; locale: 
   )
 }
 
-function WorkspaceInitialsBadge({ vault }: { vault: VaultOption }) {
+function VaultWorkspaceInitialsBadge({ vault }: { vault: VaultOption }) {
   const workspace = workspaceIdentityFromVault(vault)
-  const accentColor = workspace.color ? `var(--accent-${workspace.color})` : 'var(--muted-foreground)'
 
   return (
-    <span
-      className="inline-flex h-[16px] min-w-[18px] items-center justify-center rounded-sm border bg-transparent px-1 text-[9px] font-semibold opacity-75"
-      style={{ borderColor: accentColor, color: accentColor }}
-      title={`${workspace.label} (${workspace.alias})`}
-      aria-label={`Vault ${workspace.label}`}
-      data-testid={`vault-menu-workspace-badge-${vault.label}`}
-    >
-      {workspace.shortLabel}
-    </span>
+    <WorkspaceInitialsBadge
+      workspace={workspace}
+      testId={`vault-menu-workspace-badge-${vault.label}`}
+    />
   )
 }
 
@@ -295,10 +288,6 @@ function isIncludedVault(vault: VaultOption, defaultPath: string): boolean {
 
 function useIncludedVaults(vaults: VaultOption[], defaultPath: string): VaultOption[] {
   return useMemo(() => vaults.filter((vault) => isIncludedVault(vault, defaultPath)), [defaultPath, vaults])
-}
-
-function nextIncludedVaultPath(includedVaults: VaultOption[], currentPath: string): string | null {
-  return includedVaults.find((vault) => vault.path !== currentPath)?.path ?? null
 }
 
 function shouldDisableMountToggle({
@@ -325,22 +314,6 @@ function selectVaultPath({
   setOpen(false)
 }
 
-function applyMountedChange({
-  defaultPath,
-  includedVaults,
-  mounted,
-  onSetDefaultWorkspace,
-  onUpdateWorkspaceIdentity,
-  path,
-}: VaultMountChangeRequest): void {
-  if (!mounted && path === defaultPath) {
-    const nextDefaultPath = nextIncludedVaultPath(includedVaults, path)
-    if (!nextDefaultPath) return
-    onSetDefaultWorkspace?.(nextDefaultPath)
-  }
-  onUpdateWorkspaceIdentity?.(path, { mounted })
-}
-
 function useVaultMenuInteractions({
   defaultPath,
   includedVaults,
@@ -349,6 +322,7 @@ function useVaultMenuInteractions({
   onSwitchVault,
   onUpdateWorkspaceIdentity,
   setOpen,
+  vaultPath,
 }: VaultMenuInteractionOptions) {
   const disableMountToggleForPath = useCallback((path: string) => (
     shouldDisableMountToggle({
@@ -370,22 +344,24 @@ function useVaultMenuInteractions({
       onUpdateWorkspaceIdentity,
       path,
       setOpen,
+      vaultPath,
     })
-  }, [defaultPath, includedVaults, multiWorkspaceEnabled, onSetDefaultWorkspace, onSwitchVault, onUpdateWorkspaceIdentity, setOpen])
+  }, [defaultPath, includedVaults, multiWorkspaceEnabled, onSetDefaultWorkspace, onSwitchVault, onUpdateWorkspaceIdentity, setOpen, vaultPath])
 
   const handleMountedChange = useCallback((path: string, mounted: boolean) => {
     applyMountedChange({
       defaultPath,
+      vaultPath,
       includedVaults,
       mounted,
-      multiWorkspaceEnabled,
-      onSetDefaultWorkspace,
-      onSwitchVault,
-      onUpdateWorkspaceIdentity,
       path,
-      setOpen,
+      callbacks: {
+        onSetDefaultWorkspace,
+        onSwitchVault,
+        onUpdateWorkspaceIdentity,
+      },
     })
-  }, [defaultPath, includedVaults, multiWorkspaceEnabled, onSetDefaultWorkspace, onSwitchVault, onUpdateWorkspaceIdentity, setOpen])
+  }, [defaultPath, includedVaults, onSetDefaultWorkspace, onSwitchVault, onUpdateWorkspaceIdentity, vaultPath])
 
   return { disableMountToggleForPath, handleMountedChange, handleSelectVault }
 }
@@ -429,14 +405,26 @@ function VaultMenuItem({
   onRequestRemove,
 }: VaultMenuItemProps) {
   const unavailable = vault.available === false
+  const itemRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const item = itemRef.current
+    if (!item || unavailable) return
+
+    const handleItemClick = (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('button,input')) return
+      onSelect()
+    }
+
+    item.addEventListener('click', handleItemClick)
+    return () => item.removeEventListener('click', handleItemClick)
+  }, [onSelect, unavailable])
 
   return (
     <div
+      ref={itemRef}
       className="group relative flex w-full items-center rounded-sm hover:bg-[var(--hover)]"
       data-testid={`vault-menu-item-${vault.label}`}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onSelect()
-      }}
     >
       {multiWorkspaceEnabled && (
         <WorkspaceMountCheckbox
@@ -458,7 +446,7 @@ function VaultMenuItem({
       {multiWorkspaceEnabled && (
         <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 pr-1">
           <DefaultVaultLabel isDefault={isActive} locale={locale} />
-          <WorkspaceInitialsBadge vault={vault} />
+          <VaultWorkspaceInitialsBadge vault={vault} />
         </span>
       )}
     </div>
@@ -751,6 +739,7 @@ export function VaultMenu(props: VaultMenuProps) {
     onSwitchVault,
     onUpdateWorkspaceIdentity,
     setOpen,
+    vaultPath,
   })
 
   useDismissibleLayer(open, menuRef, () => setOpen(false))

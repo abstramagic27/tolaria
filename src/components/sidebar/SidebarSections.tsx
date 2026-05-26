@@ -240,6 +240,7 @@ function SortableSection({
 }
 
 export function TypesSection({
+  entries,
   visibleSections,
   allSectionGroups,
   sectionIds,
@@ -254,8 +255,10 @@ export function TypesSection({
   toggleVisibility,
   onCreateNewType,
   customizeRef,
+  workspaceOrder,
   locale = 'en',
 }: {
+  entries: VaultEntry[]
   visibleSections: SectionGroup[]
   allSectionGroups: SectionGroup[]
   sectionIds: string[]
@@ -267,9 +270,10 @@ export function TypesSection({
   showCustomize: boolean
   setShowCustomize: Dispatch<SetStateAction<boolean>>
   isSectionVisible: (type: string) => boolean
-  toggleVisibility: (type: string) => void
+  toggleVisibility: (type: string, typeEntryPath?: string) => void
   onCreateNewType?: () => void
   customizeRef: RefObject<HTMLDivElement | null>
+  workspaceOrder?: readonly string[]
   locale?: AppLocale
 }) {
   return (
@@ -306,9 +310,11 @@ export function TypesSection({
         </SidebarGroupHeader>
         {showCustomize && (
           <VisibilityPopover
+            entries={entries}
             sections={allSectionGroups}
             isSectionVisible={isSectionVisible}
             onToggle={toggleVisibility}
+            workspaceOrder={workspaceOrder}
             locale={locale}
           />
         )}
@@ -383,16 +389,16 @@ export function SidebarTitleBar({
   canGoBack?: boolean
   canGoForward?: boolean
 }) {
-  const { onMouseDown } = useDragRegion()
+  const { dragRegionRef } = useDragRegion<HTMLDivElement>()
   const collapseLabel = translate(locale, 'sidebar.action.collapse')
   const backLabel = translate(locale, 'command.navigation.goBack')
   const forwardLabel = translate(locale, 'command.navigation.goForward')
 
   return (
     <div
+      ref={dragRegionRef}
       className="shrink-0 flex items-center border-b border-border"
       style={{ height: 52, padding: '0 8px', paddingLeft: 90, cursor: 'default', justifyContent: 'flex-start' }}
-      onMouseDown={onMouseDown}
     >
       <div className="flex items-center gap-5" style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}>
         {onCollapse && (
@@ -460,7 +466,7 @@ export function ContextMenuOverlay({
         <Palette size={14} />
         {translate(locale, 'sidebar.action.customizeIconColor')}
       </Button>
-      <div className="my-1 h-px bg-border" role="separator" />
+      <hr className="my-1 h-px border-0 bg-border" />
       <Button
         type="button"
         variant="ghost"

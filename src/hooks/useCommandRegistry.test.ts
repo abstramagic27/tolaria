@@ -151,6 +151,29 @@ describe('useCommandRegistry', () => {
     expect(findCommand(result.current, 'view-changes')).toBeUndefined()
   })
 
+  it('exposes a single pull command for all active repositories', () => {
+    const onPull = vi.fn()
+    const onPullRepository = vi.fn()
+    const config = makeConfig({
+      gitRepositories: [
+        { path: '/vault/main', label: 'Main Vault', defaultForNewNotes: true },
+        { path: '/vault/brian', label: 'Brian', defaultForNewNotes: false },
+      ],
+      onPull,
+      onPullRepository,
+    })
+    const { result } = renderHook(() => useCommandRegistry(config))
+
+    expect(findCommand(result.current, 'git-pull-0')).toBeUndefined()
+    expect(findCommand(result.current, 'git-pull-1')).toBeUndefined()
+
+    const pull = findCommand(result.current, 'git-pull')
+    expect(pull?.label).toBe('Pull from Remote')
+    pull?.execute()
+    expect(onPull).toHaveBeenCalled()
+    expect(onPullRepository).not.toHaveBeenCalled()
+  })
+
   it('resolve-conflicts stays enabled across rerenders', () => {
     const config = makeConfig()
     const { result, rerender } = renderHook(

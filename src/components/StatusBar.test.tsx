@@ -553,7 +553,7 @@ describe('StatusBar', () => {
   })
 
   it('collapses status labels to icon-first controls at very narrow widths', () => {
-    setWindowWidth(880)
+    setWindowWidth(920)
     renderDenseStatusBar()
 
     expect(screen.getByTestId('status-bar')).toHaveStyle({
@@ -574,8 +574,21 @@ describe('StatusBar', () => {
     expect(screen.queryByText('Claude Code missing')).not.toBeInTheDocument()
   })
 
+  it('stacks the footer into two rows once the narrow-width breakpoint is crossed', () => {
+    setWindowWidth(900)
+    renderDenseStatusBar()
+
+    expect(screen.getByTestId('status-bar')).toHaveStyle({
+      flexWrap: 'wrap',
+      height: 'auto',
+    })
+    expect(screen.getByTestId('status-commit-push')).toBeInTheDocument()
+    expect(screen.getByTestId('status-pulse')).toBeInTheDocument()
+    expect(screen.getByTestId('status-feedback')).toBeInTheDocument()
+  })
+
   it('hides the active AI agent label in compact status layout', () => {
-    setWindowWidth(880)
+    setWindowWidth(920)
     render(
       <StatusBar
         noteCount={100}
@@ -744,9 +757,34 @@ describe('StatusBar', () => {
     fireEvent.click(screen.getByTestId('status-sync'))
     expect(screen.getByTestId('status-bar')).toHaveStyle({ zIndex: '30' })
     expect(screen.getByTestId('git-status-popup')).toBeInTheDocument()
-    expect(screen.getByText('main')).toBeInTheDocument()
+    expect(screen.queryByText('main')).not.toBeInTheDocument()
     expect(screen.getByText(/2 ahead/)).toBeInTheDocument()
     expect(screen.getByText(/1 behind/)).toBeInTheDocument()
+  })
+
+  it('keeps sync controls vault-agnostic when multiple vaults are active', () => {
+    render(
+      <StatusBar
+        noteCount={100}
+        vaultPath="/Users/luca/Laputa"
+        vaults={vaults}
+        multiWorkspaceEnabled={true}
+        onSwitchVault={vi.fn()}
+        repositories={[
+          { path: '/Users/luca/Laputa', label: 'Main Vault', defaultForNewNotes: true },
+          { path: '/Users/luca/Work', label: 'Work Vault', defaultForNewNotes: false },
+        ]}
+        selectedRepositoryPath="/Users/luca/Work"
+        onRepositoryChange={vi.fn()}
+        syncStatus="idle"
+        remoteStatus={{ branch: 'main', ahead: 0, behind: 0, hasRemote: true }}
+      />
+    )
+
+    expect(screen.getByTestId('status-sync')).not.toHaveTextContent('Work Vault')
+    expect(screen.getByTestId('status-sync')).toHaveTextContent('Not synced')
+    fireEvent.click(screen.getByTestId('status-sync'))
+    expect(screen.queryByTestId('git-status-repository-select')).not.toBeInTheDocument()
   })
 
   it('shows History badge in status bar', () => {

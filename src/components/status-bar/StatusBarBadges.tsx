@@ -8,6 +8,7 @@ import type { McpStatus } from '../../hooks/useMcpStatus'
 import { translate, type AppLocale, type TranslationKey } from '../../lib/i18n'
 import type { GitRemoteStatus, LastCommitInfo, SyncStatus } from '../../types'
 import { openExternalUrl } from '../../utils/url'
+import type { GitRepositoryOption } from '../../utils/gitRepositories'
 import { useDismissibleLayer } from './useDismissibleLayer'
 import { ICON_STYLE, SEP_STYLE } from './styles'
 
@@ -415,29 +416,19 @@ function PullAction({
 
   return (
     <div style={{ display: 'flex', gap: 4, marginTop: 6, borderTop: '1px solid var(--border)', paddingTop: 6 }}>
-      <button
+      <Button
+        type="button"
+        variant="outline"
+        size="xs"
         onClick={() => {
           onPull?.()
           onClose()
         }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          padding: '3px 8px',
-          background: 'transparent',
-          border: '1px solid var(--border)',
-          borderRadius: 4,
-          fontSize: 11,
-          color: 'var(--foreground)',
-          cursor: 'pointer',
-        }}
-        onMouseEnter={(event) => { event.currentTarget.style.background = 'var(--hover)' }}
-        onMouseLeave={(event) => { event.currentTarget.style.background = 'transparent' }}
+        className="h-6 gap-1 rounded-sm border-border bg-transparent px-2 text-[11px] text-foreground hover:bg-[var(--hover)]"
         data-testid="git-status-pull-btn"
       >
         <ArrowDown size={11} />{translate(locale, 'status.sync.pull')}
-      </button>
+      </Button>
     </div>
   )
 }
@@ -451,6 +442,9 @@ function GitStatusPopup({
 }: {
   status: SyncStatus
   remoteStatus: GitRemoteStatus | null
+  repositories?: GitRepositoryOption[]
+  selectedRepositoryPath?: string
+  onRepositoryChange?: (path: string) => void
   locale?: AppLocale
   onPull?: () => void
   onClose: () => void
@@ -474,10 +468,6 @@ function GitStatusPopup({
         color: 'var(--foreground)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-        <GitBranch size={13} style={{ color: 'var(--muted-foreground)' }} />
-        <span style={{ fontWeight: 500 }}>{remoteStatus?.branch || '—'}</span>
-      </div>
       <RemoteStatusSummary remoteStatus={remoteStatus} locale={locale} />
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, color: 'var(--muted-foreground)' }}>
         {translate(locale, 'status.sync.status', { status: syncStatusText(locale, status) })}
@@ -492,10 +482,10 @@ export function CommitBadge({ info, locale = 'en' }: { info: LastCommitInfo; loc
 
   if (commitUrl) {
     return (
-      <span
-        role="button"
+      <button
+        type="button"
         onClick={() => openExternalUrl(commitUrl)}
-        style={{ ...ICON_STYLE, color: 'var(--muted-foreground)', textDecoration: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3 }}
+        style={{ ...ICON_STYLE, color: 'var(--muted-foreground)', textDecoration: 'none', cursor: 'pointer', padding: '2px 4px', borderRadius: 3, border: 0, background: 'transparent' }}
         title={translate(locale, 'status.commit.openOnGitHub', { hash: info.shortHash })}
         data-testid="status-commit-link"
         onMouseEnter={(event) => { event.currentTarget.style.color = 'var(--foreground)' }}
@@ -503,7 +493,7 @@ export function CommitBadge({ info, locale = 'en' }: { info: LastCommitInfo; loc
       >
         <GitCommitHorizontal size={13} />
         {info.shortHash}
-      </span>
+      </button>
     )
   }
 
@@ -638,6 +628,9 @@ export function SyncBadge({
   status,
   lastSyncTime,
   remoteStatus,
+  repositories,
+  selectedRepositoryPath,
+  onRepositoryChange,
   onTriggerSync,
   onPullAndPush,
   onOpenConflictResolver,
@@ -647,6 +640,9 @@ export function SyncBadge({
   status: SyncStatus
   lastSyncTime: number | null
   remoteStatus?: GitRemoteStatus | null
+  repositories?: GitRepositoryOption[]
+  selectedRepositoryPath?: string
+  onRepositoryChange?: (path: string) => void
   onTriggerSync?: () => void
   onPullAndPush?: () => void
   onOpenConflictResolver?: () => void
@@ -685,6 +681,9 @@ export function SyncBadge({
         <GitStatusPopup
           status={status}
           remoteStatus={remoteStatus ?? null}
+          repositories={repositories}
+          selectedRepositoryPath={selectedRepositoryPath}
+          onRepositoryChange={onRepositoryChange}
           locale={locale}
           onPull={onTriggerSync}
           onClose={() => setShowPopup(false)}

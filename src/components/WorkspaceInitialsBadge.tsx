@@ -20,10 +20,9 @@ export function WorkspaceInitialsBadge({ className, testId, workspace }: Workspa
       )}
       style={{ borderColor: accentColor, color: accentColor }}
       title={`${workspace.label} (${workspace.alias})`}
-      aria-label={`Workspace ${workspace.label}`}
       data-testid={testId}
     >
-      {workspace.shortLabel}
+      <span className="block h-[16px] leading-[16px]">{workspace.shortLabel}</span>
     </span>
   )
 }

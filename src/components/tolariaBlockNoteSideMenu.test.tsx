@@ -126,14 +126,14 @@ vi.mock('@blocknote/react', () => ({
     )
   },
   RemoveBlockItem: ({ children }: PropsWithChildren) => (
-    <div
-      role="menuitem"
+    <button
+      type="button"
       onClick={() => {
         if (sideMenuBlock) mockEditor.removeBlocks([sideMenuBlock])
       }}
     >
       {children}
-    </div>
+    </button>
   ),
   SideMenu: ({ children }: PropsWithChildren) => <div data-testid="side-menu">{children}</div>,
   useBlockNoteEditor: () => mockEditor,
@@ -141,15 +141,16 @@ vi.mock('@blocknote/react', () => ({
     Generic: {
       Menu: {
         Item: ({ children, onClick }: MenuItemProps) => (
-          <div role="menuitem" onClick={onClick}>{children}</div>
+          <button type="button" onClick={onClick}>{children}</button>
         ),
         Root: ({ children, onOpenChange }: PropsWithChildren<{ onOpenChange?: (open: boolean) => void }>) => (
-          <div
+          <button
+            type="button"
             data-testid="menu-root"
             onClick={() => onOpenChange?.(true)}
           >
             {children}
-          </div>
+          </button>
         ),
         Trigger: ({ children }: PropsWithChildren) => <div>{children}</div>,
       },
@@ -308,7 +309,12 @@ describe('TolariaSideMenu', () => {
     renderSideMenuWithBlock(sideMenuBlock)
 
     expect(screen.getByTestId('side-menu')).toBeInTheDocument()
-    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+    const sideMenuButtons = screen.getAllByRole('button')
+      .filter((button) => button.closest('[data-testid="side-menu"]') === screen.getByTestId('side-menu'))
+      .filter((button) => button.dataset.testid !== 'menu-root')
+      .filter((button) => button.textContent !== 'Delete')
+
+    expect(sideMenuButtons.map((button) => button.textContent)).toEqual([
       'Add block',
       'Drag block',
     ])
@@ -367,6 +373,20 @@ describe('TolariaSideMenu', () => {
     })
   })
 
+  it('hides table header actions when the live block lookup throws after reload churn', () => {
+    const staleTable = {
+      id: 'table-block',
+      type: 'table',
+      content: { type: 'tableContent', rows: [], headerRows: undefined },
+    }
+    mockEditor.getBlock.mockImplementation(() => {
+      throw staleBlockError(staleTable)
+    })
+
+    expect(() => renderSideMenuWithBlock(staleTable)).not.toThrow()
+    expect(screen.queryByText('Header row')).not.toBeInTheDocument()
+  })
+
   it('ignores stale drag starts after reload churn', () => {
     renderSideMenuWithBlock(sideMenuBlock)
 
@@ -384,6 +404,18 @@ describe('TolariaSideMenu', () => {
     expect(mockEditor.transact).toHaveBeenCalled()
     expect(mockEditor.removeBlocks).toHaveBeenCalledWith([draggedBlock.id])
     expect(mockEditor.insertBlocks).toHaveBeenCalledWith([draggedBlock], targetBlock.id, 'before')
+  })
+
+  it('ignores pointer reorders when a target block lookup throws after reload churn', () => {
+    const { draggedBlock, dragHandle, targetBlock } = renderPointerReorderFixture()
+    mockEditor.getBlock.mockImplementation((id: string) => {
+      if (id === targetBlock.id) throw staleBlockError(id)
+      return id === draggedBlock.id ? draggedBlock : undefined
+    })
+
+    expect(() => dispatchHandlePointerReorder(dragHandle)).not.toThrow()
+    expect(mockEditor.removeBlocks).not.toHaveBeenCalled()
+    expect(mockEditor.insertBlocks).not.toHaveBeenCalled()
   })
 
   it('shows and clears pointer reorder affordances while dragging', () => {

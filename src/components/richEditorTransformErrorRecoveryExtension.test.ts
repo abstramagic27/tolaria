@@ -32,6 +32,37 @@ function createView(error?: Error) {
   return { currentDoc, dispatch, view }
 }
 
+function createViewWithSomeProp(handleKeyDown: () => boolean) {
+  const { currentDoc, dispatch, view } = createView()
+  const keyDownPlugin = vi.fn(handleKeyDown)
+  const someProp = vi.fn((_propName: string, run?: (prop: typeof keyDownPlugin) => unknown) => (
+    run?.(keyDownPlugin)
+  ))
+
+  return {
+    currentDoc,
+    dispatch,
+    keyDownPlugin,
+    view: {
+      ...view,
+      someProp,
+    },
+  }
+}
+
+function expectDocumentRepairRecovery(error: Error, reason: string) {
+  const { currentDoc, view } = createView(error)
+  const recoverDocument = vi.fn()
+
+  installRichEditorTransformErrorRecovery(view, { recoverDocument })
+
+  expect(() => view.dispatch({ before: currentDoc })).not.toThrow()
+  expect(recoverDocument).toHaveBeenCalledTimes(1)
+  expect(trackEvent).toHaveBeenCalledWith('rich_editor_transform_error_recovered', {
+    reason,
+  })
+}
+
 beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -48,6 +79,21 @@ describe('isRecoverableEditorTransformError', () => {
     expect(isRecoverableEditorTransformError(new RangeError(
       'Invalid content for node blockContainer: <paragraph("Procedures are long-running"), blockGroup(blockContainer(bulletListItem("Step")))>',
     ))).toBe(true)
+    expect(isRecoverableEditorTransformError(transformError(
+      'Cannot join blockGroup onto blockContainer',
+    ))).toBe(true)
+    expect(isRecoverableEditorTransformError(new RangeError(
+      'Inserted content deeper than insertion position',
+    ))).toBe(true)
+    expect(isRecoverableEditorTransformError(new RangeError(
+      'Index 1 out of range for <tableRow(tableCell(tableParagraph("A")))>',
+    ))).toBe(true)
+    expect(isRecoverableEditorTransformError(new Error(
+      'Block with ID 6c1c3bb4-e218-4f00-aaf5-40606852d286 not found',
+    ))).toBe(true)
+    expect(isRecoverableEditorTransformError(new RangeError(
+      'Index 1 out of range for <paragraph("A")>',
+    ))).toBe(false)
     expect(isRecoverableEditorTransformError(new Error('unrelated'))).toBe(false)
   })
 })
@@ -78,18 +124,74 @@ describe('installRichEditorTransformErrorRecovery', () => {
   })
 
   it('recovers invalid-content schema transactions from mixed paragraph and list editing', () => {
-    const schemaError = new RangeError(
-      'Invalid content for node blockContainer: <paragraph("Procedures are long-running"), blockGroup(blockContainer(bulletListItem("Step")))>',
+    expectDocumentRepairRecovery(
+      new RangeError(
+        'Invalid content for node blockContainer: <paragraph("Procedures are long-running"), blockGroup(blockContainer(bulletListItem("Step")))>',
+      ),
+      'transform_error',
     )
-    const { currentDoc, view } = createView(schemaError)
+  })
+
+  it('repairs invalid block joins after pull refreshes editor state', () => {
+    expectDocumentRepairRecovery(
+      transformError('Cannot join blockGroup onto blockContainer'),
+      'invalid_block_join',
+    )
+  })
+
+  it('recovers invalid block joins thrown during keydown handling before dispatch', () => {
+    const { view, keyDownPlugin } = createViewWithSomeProp(() => {
+      throw transformError('Cannot join blockGroup onto blockContainer')
+    })
+    const recoverDocument = vi.fn()
+
+    installRichEditorTransformErrorRecovery(view, { recoverDocument })
+
+    expect(view.someProp('handleKeyDown', (handler) => handler())).toBe(true)
+    expect(keyDownPlugin).toHaveBeenCalledTimes(1)
+    expect(recoverDocument).toHaveBeenCalledTimes(1)
+    expect(trackEvent).toHaveBeenCalledWith('rich_editor_transform_error_recovered', {
+      reason: 'invalid_block_join',
+    })
+  })
+
+  it('keeps unrelated keydown handler failures visible', () => {
+    const { view } = createViewWithSomeProp(() => {
+      throw new Error('keyboard plugin failed')
+    })
+
+    installRichEditorTransformErrorRecovery(view)
+
+    expect(() => view.someProp('handleKeyDown', (handler) => handler())).toThrow('keyboard plugin failed')
+    expect(trackEvent).not.toHaveBeenCalled()
+  })
+
+  it('recovers table selection transactions whose target row changed underneath BlockNote', () => {
+    expectDocumentRepairRecovery(
+      new RangeError('Index 1 out of range for <tableRow(tableCell(tableParagraph("A")))>'),
+      'table_position_out_of_range',
+    )
+  })
+
+  it('recovers invalid insertion-depth transactions after note switching and saves', () => {
+    expectDocumentRepairRecovery(
+      new RangeError('Inserted content deeper than insertion position'),
+      'invalid_insertion_depth',
+    )
+  })
+
+  it('recovers stale block-reference transactions from toolbar actions', () => {
+    const { currentDoc, view } = createView(new Error(
+      'Block with ID 6c1c3bb4-e218-4f00-aaf5-40606852d286 not found',
+    ))
     const recoverDocument = vi.fn()
 
     installRichEditorTransformErrorRecovery(view, { recoverDocument })
 
     expect(() => view.dispatch({ before: currentDoc })).not.toThrow()
-    expect(recoverDocument).toHaveBeenCalledTimes(1)
+    expect(recoverDocument).not.toHaveBeenCalled()
     expect(trackEvent).toHaveBeenCalledWith('rich_editor_transform_error_recovered', {
-      reason: 'transform_error',
+      reason: 'stale_block_reference',
     })
   })
 
@@ -116,6 +218,23 @@ describe('installRichEditorTransformErrorRecovery', () => {
 
     secondUninstall()
     expect(view.dispatch).toBe(dispatch)
+  })
+
+  it('restores the original keydown prop lookup after all installs are cleaned up', () => {
+    const { view } = createViewWithSomeProp(() => false)
+    const originalSomeProp = view.someProp
+
+    const firstUninstall = installRichEditorTransformErrorRecovery(view)
+    const secondUninstall = installRichEditorTransformErrorRecovery(view)
+    const wrappedSomeProp = view.someProp
+
+    expect(wrappedSomeProp).not.toBe(originalSomeProp)
+
+    firstUninstall()
+    expect(view.someProp).toBe(wrappedSomeProp)
+
+    secondUninstall()
+    expect(view.someProp).toBe(originalSomeProp)
   })
 
   it('restores the previous recoverDocument callback when a later install unmounts', () => {

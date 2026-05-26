@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { PulseView } from './PulseView'
 import type { PulseCommit } from '../types'
 
+const openExternalUrl = vi.fn()
 const mockCommits: PulseCommit[] = [
   {
     hash: 'abc123def456',
@@ -44,6 +45,9 @@ vi.mock('../mock-tauri', () => ({
 }))
 vi.mock('../hooks/useDragRegion', () => ({
   useDragRegion: () => ({ onMouseDown: dragRegionMouseDown }),
+}))
+vi.mock('../utils/url', () => ({
+  openExternalUrl: (...args: unknown[]) => openExternalUrl(...args),
 }))
 
 describe('PulseView', () => {
@@ -109,6 +113,17 @@ describe('PulseView', () => {
     expect(nonLink.tagName).toBe('SPAN')
   })
 
+  it('opens commit links through the shared external URL opener', async () => {
+    mockInvokeFn.mockResolvedValue(mockCommits)
+
+    render(<PulseView vaultPath="/test/vault" />)
+
+    const link = await screen.findByText('abc123d')
+    fireEvent.click(link)
+
+    expect(openExternalUrl).toHaveBeenCalledWith('https://github.com/owner/repo/commit/abc123def456')
+  })
+
   it('renders file list with correct titles when expanded', async () => {
     mockInvokeFn.mockResolvedValue(mockCommits)
 
@@ -118,7 +133,9 @@ describe('PulseView', () => {
     await waitFor(() => {
       expect(screen.getAllByLabelText('Expand files').length).toBeGreaterThan(0)
     })
-    screen.getAllByLabelText('Expand files').forEach((btn) => fireEvent.click(btn))
+    screen.getAllByLabelText('Expand files').forEach((btn) => {
+      fireEvent.click(btn)
+    })
 
     await waitFor(() => {
       expect(screen.getByText('my project')).toBeInTheDocument()
@@ -149,7 +166,9 @@ describe('PulseView', () => {
     await waitFor(() => {
       expect(screen.getAllByLabelText('Expand files').length).toBeGreaterThan(0)
     })
-    rowLabels.forEach((rowLabel) => fireEvent.click(screen.getByText(rowLabel)))
+    rowLabels.forEach((rowLabel) => {
+      fireEvent.click(screen.getByText(rowLabel))
+    })
 
     await waitFor(() => {
       expect(screen.getByText(fileText)).toBeInTheDocument()
